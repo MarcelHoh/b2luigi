@@ -203,7 +203,7 @@ class HTCondorProcess(BatchProcess):
         if not self._batch_job_id:
             return
 
-        subprocess.run(["condor_rm", str(self._batch_job_id)], stdout=subprocess.DEVNULL)
+        subprocess.run(["condor_rm", str(self._batch_job_id)], stdout=subprocess.DEVNULL, check=False)
         task_to_job_id_db = pickledb.load(self.task_to_job_id_db_path, auto_dump=False)
         try:
             task_to_job_id_db.rem(self.task.task_id)
