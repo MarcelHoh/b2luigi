@@ -139,7 +139,11 @@ class HTCondorProcess(BatchProcess):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._batch_job_id = None
+        self.task_to_job_id_db_path = os.path.expanduser("~/.cache/b2luigi/htcondor/task_to_job_id.db")
+        task_to_job_id_db = pickledb.load(self.task_to_job_id_db_path, auto_dump=False)
+        cached_batch_job_id = task_to_job_id_db.get(self.task.task_id)
+
+        self._batch_job_id = cached_batch_job_id if cached_batch_job_id else None
 
     def get_job_status(self):
         if not self._batch_job_id:
@@ -152,26 +156,35 @@ class HTCondorProcess(BatchProcess):
 
         if job_status in [HTCondorJobStatus.idle, HTCondorJobStatus.running]:
             return JobStatus.running
+
+        # else if job is not running anymore, remove its htcondor Job ID from cache
+        try:
+            task_to_job_id_db = pickledb.load(self.task_to_job_id_db_path, auto_dump=False)
+            task_to_job_id_db.rem(self.task.task_id)
+        except KeyError:
+            pass
+
         if job_status in [HTCondorJobStatus.completed]:
             return JobStatus.successful
         if job_status in [HTCondorJobStatus.removed, HTCondorJobStatus.held, HTCondorJobStatus.failed]:
             return JobStatus.aborted
         raise ValueError(f"Unknown HTCondor Job status: {job_status}")
 
-    def start_job(self):
-        # Check if job with this task ID is already running on the batch.
-        # For that, we have to first check if there is a job ID stored in the cache.
-        task_to_job_id_db_path = os.path.expanduser("~/.cache/b2luigi/htcondor/task_to_job_id.db")
-        task_to_job_id_db = pickledb.load(task_to_job_id_db_path, False)
-        existing_batch_job_id = task_to_job_id_db.get(self.task.task_id)
-        if existing_batch_job_id:
-            self._batch_job_id = existing_batch_job_id
-            # If the existing job is running, abort submission and continue monitoring existing job
-            if self.get_job_status() == JobStatus.running:
-                print(f"\n\nFound existing running job for task {self.task.task_id} with ID {existing_batch_job_id}\n\n")
-                return
-            task_to_job_id_db.rem(self.task.task_id)
+    def _dump_job_id_to_db(self):
+        """
+        Store job ID for this task ID in cached database so that when luigi is re-rerun after failure it can pick up
+        running tasks on htcondor.
+        """
+        task_to_job_id_db = pickledb.load(self.task_to_job_id_db_path, auto_dump=False)
+        assert self._batch_job_id() is not None
+        task_to_job_id_db.set(self.task.task_id, self._batch_job_id)
+        db_dir = os.path.dirname(self.task_to_job_id_db_path)
+        if not os.path.isdir(db_dir):
+            print(f"Directory {db_dir} does not exist, creating it.")
+            os.makedirs(db_dir)
+        task_to_job_id_db.dump()
 
+    def start_job(self):
         submit_file = self._create_htcondor_submit_file()
 
         # HTCondor submit needs to be called in the folder of the submit file
@@ -184,19 +197,18 @@ class HTCondorProcess(BatchProcess):
             raise RuntimeError("Batch submission failed with output " + output)
 
         self._batch_job_id = int(match.group(0)[:-1])
-        # store job id in database
-        task_to_job_id_db.set(self.task.task_id, self._batch_job_id)
-        db_dir = os.path.dirname(task_to_job_id_db_path)
-        if not os.path.isdir(db_dir):
-            print(f"Directory {db_dir} does not exist, creating it.")
-            os.makedirs(db_dir)
-        task_to_job_id_db.dump()
+        self._dump_job_id_to_db()
 
     def kill_job(self):
         if not self._batch_job_id:
             return
 
         subprocess.run(["condor_rm", str(self._batch_job_id)], stdout=subprocess.DEVNULL)
+        task_to_job_id_db = pickledb.load(self.task_to_job_id_db_path, auto_dump=False)
+        try:
+            task_to_job_id_db.rem(self.task.task_id)
+        except KeyError:
+            pass
 
     def _create_htcondor_submit_file(self):
         submit_file_content = []
