@@ -150,14 +150,13 @@ class HTCondorProcess(BatchProcess):
         except KeyError:
             return JobStatus.aborted
 
+        if job_status in [HTCondorJobStatus.idle, HTCondorJobStatus.running]:
+            return JobStatus.running
         if job_status in [HTCondorJobStatus.completed]:
             return JobStatus.successful
-        elif job_status in [HTCondorJobStatus.idle, HTCondorJobStatus.running]:
-            return JobStatus.running
-        elif job_status in [HTCondorJobStatus.removed, HTCondorJobStatus.held, HTCondorJobStatus.failed]:
+        if job_status in [HTCondorJobStatus.removed, HTCondorJobStatus.held, HTCondorJobStatus.failed]:
             return JobStatus.aborted
-        else:
-            raise ValueError(f"Unknown HTCondor Job status: {job_status}")
+        raise ValueError(f"Unknown HTCondor Job status: {job_status}")
 
     def start_job(self):
         # Check if job with this task ID is already running on the batch.
