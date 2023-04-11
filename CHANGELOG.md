@@ -10,7 +10,39 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- **gbasf2**: Switched to the `--new` flag in `gb2_ds_get` which downloads files significantly faster than previously. Gbasf2 release v5r6 (November 2022) is required. [#190](https://github.com/nils-braun/b2luigi/pull/190).
+* **gbasf2:** New setting `gbasf2_setup_path` which can be used to customize the path to the gbasf2 setup file directly (default: `"/cvmfs/belle.kek.jp/grid/gbasf2/pro/tools/setup.sh"`). It is a more flexible replacement for the `gbasf2_install_directory` setting, which will be removed in the future, since we can't predict potential name and path changes of the setup script between gbasf2 releases. @meliache #162
+
+## [0.10.0] - 2023-04-03
+
+### Changed
+
+- For local basf2 versions, change how hash for `basf2_release` Parameter is calculated. Now use basf2 functionality to get the version, to be consistent with the output of `basf2 --version`. The new hash encodes both the local and central basf2 release, the basf2 function [`getCommitID`](https://github.com/belle2/basf2/blob/1c972b2c89ef11f38ee2f5ea8eb562dde0637155/framework/io/include/RootIOUtilities.h#L77-L84). When basf2 is not set up, print warning before returning `"not_set"`. Thanks to @GiacomoXT in [#193](https://github.com/nils-braun/b2luigi/issues/193).
+
+  **Warning:** If you use local basf2 versions, that is your `basf2_release` is a git hash, this will change your b2luigi target output paths. This means that tasks that were marked _complete_, might suddenly not be _complete_ anymore after updating to this release. A workaround is to check for the new expected path via `python3 <steering_fname>.py --show_output` and rename the `git_hash=<…>` directory.
+
+- Apply `max_events` Parameter not by changing the environment singleton, but instead forward it to `basf2.process` call. This should hopefully not affect the behaviour in practice. Also by @GiacomoXT in [#193](https://github.com/nils-braun/b2luigi/issues/193)
+
+- Refactor the basf2 related examples to use more idiomatic, modern basf2 code, e.g. using `basf2.Path()` instead of `basf2.create_path()`. . Also by @GiacomoXT in [#193](https://github.com/nils-braun/b2luigi/issues/193)
+
+### Fixed
+
+- Fix example `SimulationTask` task in `basf2_chain_example.py`, which probably wasn't working as it was missing the Geometry module. Also by @GiacomoXT in [#193](https://github.com/nils-braun/b2luigi/issues/193)
+
+
+**Full Changelog**: https://github.com/nils-braun/b2luigi/compare/v0.10.0...main
+
+## [0.9.1] - 2023-03-20
+
+### Fixed
+
+- Fix circular import [#188](https://github.com/nils-braun/b2luigi/issues/188)
+
+### Added
+
+- Add the ability to pass a custom hashing function to parameters via the `hash_function` keyword argument. The function must take one argument, the value of the parameter. It is up to the user to ensure unique strings are created. [#189](https://github.com/nils-braun/b2luigi/pull/189)
+- **gbasf2**: Switch to the `--new` flag in `gb2_ds_get` which downloads files significantly faster than previously. Gbasf2 release v5r6 (November 2022) is required. [#190](https://github.com/nils-braun/b2luigi/pull/190).
+
+**Full Changelog**: https://github.com/nils-braun/b2luigi/compare/v0.9.0...v0.9.1
 
 - added the ability to pass a custom hashing function to parameters via the `hash_function` keyword argument. [#189](https://github.com/nils-braun/b2luigi/pull/189). The function must take one argument, the value of the parameter. It is up to the user to ensure unique strings are created.
 
