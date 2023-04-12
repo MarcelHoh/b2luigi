@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """
 Script that calls gbasf/Dirac API dictionary with status and other information
@@ -19,6 +19,24 @@ import sys
 from BelleDIRAC.gbasf2.lib.job.information_collector import InformationCollector
 from BelleDIRAC.Client.helpers.auth import userCreds
 
+# from b2luigi.batch.processes.gbasf2_utils.json_encoder import Gbasf2ResultJsonEncoder
+
+import json
+
+from DIRAC.Core.Security.X509Chain import X509Chain
+import datetime
+
+
+class Gbasf2ResultJsonEncoder(json.JSONEncoder):
+    """
+    JSON encoder for data structures possibly including certificate objects.
+    """
+    def default(self, obj):
+        if isinstance(obj, X509Chain):
+            return obj.dumpAllToString()
+        elif isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+        return json.JSONEncoder.default(self, obj)
 
 @userCreds
 def get_job_status_dict(project_name, user_name, group_name):
@@ -64,4 +82,4 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--group', type=str, default="belle", help="gbasf2 group name")
     args = parser.parse_args()
     job_status_dict = get_job_status_dict(args.project, args.user, args.group)
-    print(json.dumps(job_status_dict))
+    print(json.dumps(job_status_dict, cls=Gbasf2ResultJsonEncoder))

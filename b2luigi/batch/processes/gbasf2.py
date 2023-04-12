@@ -1,6 +1,7 @@
 import errno
 import hashlib
 import json
+import yaml
 import os
 import re
 import shlex
@@ -26,6 +27,23 @@ from jinja2 import Template
 from luigi.target import Target
 from retry import retry
 
+import keyring
+import keyring.backends.kwallet
+keyring.set_keyring(keyring.backends.kwallet.DBusKeyring())
+
+def get_certificate_password():
+    """
+    Gets the certificate password.
+    If the password is not set for the username asks for it and sets it.
+    
+    If the password ever changes the user has to reset keyring themselves :(
+    """
+    # try:
+    #     return keyring.get_password("certificate", "hohmann")
+    # except:
+    pwd = getpass("Certificate password: ")
+    # keyring.set_password("certificate", "hohmann", pwd)
+    return pwd
 
 class Gbasf2Process(BatchProcess):
     """
@@ -1096,6 +1114,7 @@ def get_gbasf2_project_job_status_dict(
             f"\nCould not find any jobs for project {gbasf2_project_name} on the grid.\n"
             + "Probably there was an error during the project submission when running the gbasf2 command.\n"
         )
+        
     job_status_json_string = proc.stdout
     return json.loads(job_status_json_string)
 
@@ -1247,12 +1266,12 @@ def setup_dirac_proxy(gbasf2_setup_path="/cvmfs/belle.kek.jp/grid/gbasf2/pro/set
     )
 
     while True:
-        pwd = getpass("Certificate password: ")
+        pwd = get_certificate_password()
         try:
             proc = run_with_gbasf2(
                 proxy_init_cmd,
                 input=pwd,
-                ensure_proxy_initialized=False,
+                ensure_proxy_initialized=True,
                 capture_output=True,
                 check=True,
                 gbasf2_setup_path=gbasf2_setup_path,
