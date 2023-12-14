@@ -138,7 +138,7 @@ class Gbasf2Process(BatchProcess):
 
         Other not required, but noteworthy settings are:
 
-        - ``gbasf2_setup_path``: Path to directory where gbasf2 is installed.
+        - ``gbasf2_setup_path``: Path to gbasf2 environment setup script that needs so be sourced to run gbasf2 commands.
             Defaults to ``"/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc" ``.
         - ``gbasf2_release``: Defaults to the release of your currently set up basf2 release.
           Set this if you want the jobs to use another release on the grid.
@@ -231,42 +231,30 @@ class Gbasf2Process(BatchProcess):
         # Setting it via a setting.json file is not supported to make sure users set unique project names
         self.gbasf2_project_name = get_unique_project_name(self.task)
 
-        gbasf2_setup_path = get_setting(
+        self.gbasf2_setup_path = get_setting(
             "gbasf2_setup_path",
-            default=False,
+            default="/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc",
             task=self.task,
         )
-        gbasf2_install_directory = get_setting(
+
+        if not os.path.isfile(self.gbasf2_setup_path):
+            raise FileNotFoundError(
+                errno.ENOENT, os.strerror(errno.ENOENT),
+                f"File not found: {self.gbasf2_setup_path}.\n"
+                "Maybe you need to customize the `gbasf2_setup_path` setting?\n"
+                "That is sometimes necessary when file location changed between gbasf2 releases."
+            )
+
+        if get_setting(
             "gbasf2_install_directory",
             default=False,
             task=self.task,
-        )
-        # FIXME: backwards compatibility code to check for the ``gbasf2_install_directory``
-        # setting. Remove this in the future.
-        if gbasf2_install_directory:
-            if gbasf2_setup_path:
-                warnings.warn(
-                    "Both the ``gbasf2_setup_path`` and ``gbasf2_install_directory`` "
-                    "settings are given. Will use ``gbasf2_setup_path``, "
-                    "because ``gbasf2_install_directory`` will be deprecated in "
-                    "future releases.",
-                    PendingDeprecationWarning
-                )
-            else:
-                gbasf2_setup_path = os.path.join(
-                    gbasf2_install_directory, "BelleDIRAC/gbasf2/pro/setup.sh"
-                )
-                warnings.warn(
-                    "The setting ``gbasf2_install_directory`` will be deprecated. "
-                    "Please use the ``gbasf2_setup_path`` setting instead."
-                    "because ``gbasf2_install_directory`` will be deprecated in "
-                    "future releases.",
-                    PendingDeprecationWarning
-                )
-        if gbasf2_setup_path:
-            self.gbasf2_setup_path = gbasf2_setup_path
-        else:
-            self.gbasf2_setup_path = "/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc"
+        ):
+            warnings.warn(
+                "IGNORING deprecated setting `gbasf2_install_directory`" +
+                "Instead set the path to the setup file directly with the `gbasf2_setup_path` setting.",
+                DeprecationWarning
+            )
 
         #: Output file directory of the task to wrap with gbasf2, where we will
         # store the pickled basf2 path and the created steerinfile to execute
@@ -406,7 +394,7 @@ class Gbasf2Process(BatchProcess):
         Things to do after the project failed
         """
         job_status_dict = get_gbasf2_project_job_status_dict(
-            self.gbasf2_project_name, dirac_user=self.dirac_user
+            self.gbasf2_project_name, dirac_user=self.dirac_user, gbasf2_setup_path=self.gbasf2_setup_path
         )
         failed_job_dict = {
             job_id: job_info
@@ -1103,6 +1091,10 @@ def get_gbasf2_project_job_status_dict(
             f"\nCould not find any jobs for project {gbasf2_project_name} on the grid.\n"
             + "Probably there was an error during the project submission when running the gbasf2 command.\n"
         )
+    if proc.returncode > 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, job_status_command, output=proc.stdout, stderr=proc.stderr
+        )
     job_status_json_string = proc.stdout
     return json.loads(job_status_json_string)
 
@@ -1130,7 +1122,7 @@ def run_with_gbasf2(
     check=True,
     encoding="utf-8",
     capture_output=False,
-    gbasf2_setup_path="/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc",#/cvmfs/belle.kek.jp/grid/gbasf2/pro/setup.sh",
+    gbasf2_setup_path="/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc",
     **kwargs
 ):
     """
@@ -1219,7 +1211,7 @@ def get_dirac_user(gbasf2_setup_path="/cvmfs/belle.kek.jp/grid/gbasf2/pro/bashrc
     """Get dirac user name."""
     # ensure proxy is initialized, because get_proxy_info can't do it, otherwise
     # it causes an infinite loop
-    setup_dirac_proxy()
+    setup_dirac_proxy(gbasf2_setup_path)
     try:
         proxy_info = get_proxy_info(gbasf2_setup_path)
         return proxy_info["username"]
@@ -1233,7 +1225,7 @@ def setup_dirac_proxy(gbasf2_setup_path="/cvmfs/belle.kek.jp/grid/gbasf2/pro/bas
     """Run ``gb2_proxy_init -g belle`` if there's no active dirac proxy. If there is, do nothing."""
     # first run script to check if proxy is already alive or needs to be initalized
     try:
-        if get_proxy_info()["secondsLeft"] > 3600 * get_setting(
+        if get_proxy_info(gbasf2_setup_path)["secondsLeft"] > 3600 * get_setting(
             "gbasf2_min_proxy_lifetime", default=0
         ):
             return
