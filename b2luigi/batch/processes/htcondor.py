@@ -186,8 +186,8 @@ class HTCondorProcess(BatchProcess):
     def kill_job(self):
         if not self._batch_job_id:
             return
-
-        subprocess.run(["condor_rm", str(self._batch_job_id)], stdout=subprocess.DEVNULL)
+        return
+        #subprocess.run(["condor_rm", str(self._batch_job_id)], stdout=subprocess.DEVNULL)
 
     def _create_htcondor_submit_file(self):
         submit_file_content = []
